@@ -2,7 +2,7 @@
 
 this firmware is a replacement for the firmware included on the 2026 open sauce badge.
 
-the badge uses a custom board based on the Arduino MKR Zero. to flash it, open the .ino in Arduino IDE and choose the MKR Zero as your board. make sure to install the necessary libraries in your library manager. specifically you need `Adafruit_LIS3DH`, `Adafruit_FreeTouch`, and `FlashStorage`.
+the badge uses a custom board based on the Arduino MKR Zero.
 
 ### how this came to be
 
@@ -33,7 +33,7 @@ in addition to the above modes, there is a special event that occurs if you brus
 1. install arduino IDE if you don't already have it
 2. open the .ino file in arduino IDE
 3. plug your badge in via usb. if you do not see it show up, try quickly double-pressing the little button in between the eyes to go to bootloader mode.
-4. open the library manager on the left and search for + download the necessary libraries mentioned at the top of this readme
+4. open the library manager on the left and search/download `Adafruit_LIS3DH`, `Adafruit_FreeTouch`, and `FlashStorage`.
 5. go to tools->boards->board manager... and search for "SAMD boards" -- install the "Arduino SAMD boards" package
 6. select your board and serial/usb port in the dropdown at the top
 7. sketch->upload (or the right arrow in the IDE on the top left). this will compile and upload the sketch to your badge and restart it
