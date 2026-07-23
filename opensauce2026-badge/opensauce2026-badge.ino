@@ -23,6 +23,15 @@
     Button:                 D14 (pulled high when pressed)
     Surface mount LED:      LED_BUILTIN
 
+  SAO PINS:
+    Note: Both SAOs have electrically connected GPIO pins
+    SAO pin 1 -> 3.3v
+    SAO pin 2 -> gnd
+    SAO pin 3 (sda) -> board sda (PA08)
+    SAO pin 4 (scl) -> board scl (PA09)
+    SAO pin 5 (gpio1) -> D8
+    SAO pin 6 (gpio2) -> D9
+
   TUNED THRESHOLDS:
     Mic:   dip (500 - analogRead) > 200
     Whack: any single accel axis > 25.0 m/s^2
