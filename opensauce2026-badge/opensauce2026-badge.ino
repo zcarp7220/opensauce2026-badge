@@ -2037,12 +2037,48 @@ void drumMachineGame() {
   }
 }
 // ---------------- Slot 6: Ocarina ----------------
+uint8_t digitalOcarinaGetState(){
+  static uint8_t state = 0;
+  static const int PAD_COUNT = 6;
+  static bool stateArray[PAD_COUNT] = {0};
+  static bool padWasActive[PAD_COUNT] = {0};       // debounced/stable state
+  static bool padRawLastReading[PAD_COUNT] = {0};  // last raw (undebounced) reading
+  static unsigned long padLastChangeTime[PAD_COUNT] = {0};        // when the raw reading last changed
+  static const unsigned long PAD_DEBOUNCE_MS = 10; // require a stable reading this long before accepting it
+
+ for (int i = 0; i < PAD_COUNT; i++) {
+    bool rawActive = touchIsActive(i);
+
+    if (rawActive != padRawLastReading[i]) {
+        padLastChangeTime[i] = millis();
+        padRawLastReading[i] = rawActive;
+    }
+
+    if (millis() - padLastChangeTime[i] > PAD_DEBOUNCE_MS) {
+        padWasActive[i] = rawActive;
+    }
+}
+
+state =
+    padWasActive[0] |
+    ((padWasActive[1] || padWasActive[2]) << 1) |
+    ((padWasActive[3] || padWasActive[4]) << 2) |
+    (padWasActive[5] << 3);
+    
+  Serial.println(state, BIN);
+  return state;
+}
 
 void digitalOcarina() {
     Serial.println("Digital Ocarina: Press combos of touch pads and blow into mic to play notes. Hold button 3s to exit.");
   unsigned long holdStart = 0;
   bool wasPressed = false;
+  bool isPlaying = false;
+  unsigned long previousMillis = 0;
+  uint16_t currNote = 0;
+  uint8_t touchPadState = 0;
   allBankOff();
+  calibrateTouch();
   while (true) {
     // 3-second exit-hold check
     updateButtonDebounce();
@@ -2055,7 +2091,23 @@ void digitalOcarina() {
       exitAllLedsAndEnterAttract();
       return;
     }
-     wasPressed = pressedNow;
+    wasPressed = pressedNow;
+    
+  unsigned long currentMillis = millis();
+
+  if((currentMillis - previousMillis > 100) && isPlaying) {
+     previousMillis = currentMillis;  
+    isPlaying = false;
+  }
+
+  if(checkMicTriggered() && !isPlaying){
+    tone(PIN_PIEZO, currNote, 110);
+    isPlaying = true;
+  }
+
+  touchPadState = digitalOcarinaGetState();
+
+  
   }
 }
 // ---------------- Touch pads ----------------
