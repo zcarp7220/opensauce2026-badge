@@ -2060,12 +2060,10 @@ uint8_t digitalOcarinaGetState(){
 }
 
 state =
-    padWasActive[0] |
-    ((padWasActive[1] || padWasActive[2]) << 1) |
-    ((padWasActive[3] || padWasActive[4]) << 2) |
-    (padWasActive[5] << 3);
+    (padWasActive[0]  | padWasActive[1])       |
+    ((padWasActive[2] | padWasActive[3]) << 1) |
+    ((padWasActive[4] | padWasActive[5]) << 2);
     
-  Serial.println(state, BIN);
   return state;
 }
 
@@ -2077,8 +2075,9 @@ void digitalOcarina() {
   unsigned long previousMillis = 0;
   uint16_t currNote = 0;
   uint8_t touchPadState = 0;
+unsigned long lastBlowTime = 0;
+const unsigned long HOLD_TIME = 300; // ms
   allBankOff();
-  calibrateTouch();
   while (true) {
     // 3-second exit-hold check
     updateButtonDebounce();
@@ -2095,19 +2094,33 @@ void digitalOcarina() {
     
   unsigned long currentMillis = millis();
 
-  if((currentMillis - previousMillis > 100) && isPlaying) {
-     previousMillis = currentMillis;  
-    isPlaying = false;
+
+  if (checkMicTriggered()) {
+    lastBlowTime = millis();
   }
 
-  if(checkMicTriggered() && !isPlaying){
-    tone(PIN_PIEZO, currNote, 110);
+  if ((millis() - lastBlowTime < HOLD_TIME) && !isPlaying) {
+    tone(PIN_PIEZO, currNote);
     isPlaying = true;
+    Serial.println(currNote);
+  }
+
+  if ((millis() - lastBlowTime >= HOLD_TIME) && isPlaying) {
+    noTone(PIN_PIEZO);
+    isPlaying = false;
   }
 
   touchPadState = digitalOcarinaGetState();
 
-  
+  switch(touchPadState){
+  case 0b1000: currNote = NOTE_C4; break;
+  case 0b0100: currNote = NOTE_D4; break;
+  case 0b1100: currNote = NOTE_E4; break;
+  case 0b0010: currNote = NOTE_F4; break;
+  case 0b1010: currNote = NOTE_G4; break;
+  case 0b0110: currNote = NOTE_A4; break;
+  case 0b1110: currNote = NOTE_B4; break;
+  }
   }
 }
 // ---------------- Touch pads ----------------
