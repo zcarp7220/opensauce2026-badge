@@ -24,12 +24,14 @@
     Surface mount LED:      LED_BUILTIN
 
   SAO PINS:
-    Note: Both SAOs have electrically connected GPIO pins
+    Note 1: Both SAOs have electrically connected GPIO pins.
+    Note 2: Simple SAOs provided at Open Sauce wire GPIO2 to their LED(s) only.
+    Note 3: On this board the SAO ports' GPIO2 is wired to D9 which has no PWM support.
     SAO pin 1 -> 3.3v
     SAO pin 2 -> gnd
     SAO pin 3 (sda) -> board sda (PA08)
     SAO pin 4 (scl) -> board scl (PA09)
-    SAO pin 5 (gpio1) -> D8
+    SAO pin 5 (gpio1) -> D8 
     SAO pin 6 (gpio2) -> D9
 
   TUNED THRESHOLDS:
@@ -128,6 +130,10 @@
 #define PIN_LED_RIGHTEYE    6
 #define PIN_LED_LEFTEYE       7
 
+// Open-sauce provided SAOs use the SAO connector GPIO2, which is on D9
+// Note pin D9 does not support PWM (only 0-8, 10, A3, and A4 do)
+#define PIN_LED_SAO 9
+
 // Mic calibration. Tested in noisy and quiet environment
 #define MIC_RESTING_VAL 500
 #define MIC_DIP_THRESHOLD 200
@@ -144,14 +150,15 @@
 const int PIN_BANK[5] = {1, 0, 3, 2, 4};
 
 // (almost) Every LED on the badge, for effects that light up the whole thing at once.
-const int ALL_LEDS[8] = {
+const int ALL_LEDS[9] = {
   PIN_BANK[0], PIN_BANK[1], PIN_BANK[2], PIN_BANK[3], PIN_BANK[4],
-  PIN_LED_FOREHEAD, PIN_LED_RIGHTEYE, PIN_LED_LEFTEYE
+  PIN_LED_FOREHEAD, PIN_LED_RIGHTEYE, PIN_LED_LEFTEYE, PIN_LED_SAO
 };
-const int NUM_ALL_LEDS = 8;
+const int NUM_ALL_LEDS = 9;
 
 // "Clockwise around the face" order for attract mode's rotation light show:
 // teeth right-to-left, then left eye, forehead, right eye, then repeat.
+// SAO is skipped since dual SAOs on either side would ruin our amazing illusion.
 const int ATTRACT_ROTATION_ORDER[8] = {
   PIN_BANK[4], PIN_BANK[3], PIN_BANK[2], PIN_BANK[1], PIN_BANK[0],
   PIN_LED_LEFTEYE, PIN_LED_FOREHEAD, PIN_LED_RIGHTEYE
@@ -334,7 +341,7 @@ bool hasCelebratedThisRun = false;
 // ---- Background music: C3/C4 tick-tock, faster + higher each tier ----
 const int MUSIC_BASE_LOW_FREQ = 131;   // C3
 const int MUSIC_BASE_HIGH_FREQ = 262;  // C4 (one octave up)
-const unsigned long MUSIC_BASE_NOTE_MS = 500; // slow start, room to speed up across tiers
+const unsigned long MUSIC_BASE_NOTE_MS = 350; // slow start, room to speed up across tiers
 const unsigned long MUSIC_MIN_NOTE_MS = 60;   // floor so it doesn't become a blur
 
 unsigned long musicNoteIntervalMs;
@@ -358,6 +365,7 @@ void setup() {
   pinMode(PIN_LED_FOREHEAD, OUTPUT);
   pinMode(PIN_LED_RIGHTEYE, OUTPUT);
   pinMode(PIN_LED_LEFTEYE, OUTPUT);
+  pinMode(PIN_LED_SAO, OUTPUT);
   for (int i = 0; i < 5; i++) pinMode(PIN_BANK[i], OUTPUT);
 
   checkBootHoldForHighScoreClear();
@@ -512,7 +520,7 @@ void updateAttractMode() {
 
   switch (attractLightMode) {
     case 0: { // default: slow random flicker
-      for (int i = 0; i < NUM_ALL_LEDS; i++) digitalWrite(ALL_LEDS[i], LOW);
+      clearAllLeds();
       int numToLight = random(1, 4); // 1-3 LEDs at a time, keeps it sparse/slow-feeling
       for (int k = 0; k < numToLight; k++) {
         digitalWrite(ALL_LEDS[random(0, NUM_ALL_LEDS)], HIGH);
@@ -522,7 +530,7 @@ void updateAttractMode() {
     }
 
     case 1: { // fast random strobe
-      for (int i = 0; i < NUM_ALL_LEDS; i++) digitalWrite(ALL_LEDS[i], LOW);
+      clearAllLeds();
       int numToLight = random(3, NUM_ALL_LEDS + 1);
       for (int k = 0; k < numToLight; k++) {
         digitalWrite(ALL_LEDS[random(0, NUM_ALL_LEDS)], HIGH);
@@ -538,7 +546,7 @@ void updateAttractMode() {
     }
 
     case 3: { // rotation - one LED at a time, "clockwise" around the face
-      for (int i = 0; i < NUM_ALL_LEDS; i++) digitalWrite(ALL_LEDS[i], LOW);
+      clearAllLeds();
       digitalWrite(ATTRACT_ROTATION_ORDER[attractRotationIndex], HIGH);
 
       // Indices 0-4 are the teeth (fast pace); 5-7 are eye/forehead/eye,
@@ -587,7 +595,7 @@ void updateAttractMode() {
         }
       }
 
-      // --- Eyes + forehead: slow, synchronized (not independent) breathe ---
+      // --- Eyes + forehead + SAO: slow, synchronized (not independent) breathe ---
       const float BREATHE_PERIOD_MS = 3500.0;
       float facePhase = (float)(now % (unsigned long)BREATHE_PERIOD_MS) / BREATHE_PERIOD_MS;
       float faceBrightness = (sin(facePhase * 2.0 * PI) * 0.5) + 0.5;
@@ -595,8 +603,11 @@ void updateAttractMode() {
       // Forehead (D5) has the same tone()/TC5 sharing issue as tooth5 - same
       // on/off threshold fallback, matching the teeth-scan sync.
       digitalWrite(PIN_LED_FOREHEAD, (faceBrightness > 0.5) ? HIGH : LOW);
+      // The SAO LED is not capable of PWM. It's plumbed to D9 (no PWM support).
+      digitalWrite(PIN_LED_SAO, (faceBrightness > 0.5) ? HIGH : LOW);
       analogWrite(PIN_LED_RIGHTEYE, facePwm);
       analogWrite(PIN_LED_LEFTEYE, facePwm);
+      
 
       attractNextUpdateTime = millis() + 20; // frequent updates for smooth motion/fade
       break;
@@ -856,14 +867,25 @@ void playSpeedUpSting() {
   if (beepMs < 30) beepMs = 30;
   unsigned long soundMs = (unsigned long)(beepMs * 0.6); // staccato - tone cuts off early, leaving a gap
 
+  clearAllLeds();
   for (int block = 0; block < 4; block++) {
     float freq = musicHighFreq * pow(2.0, block / 12.0); // each block one semitone higher
     for (int beep = 0; beep < 4; beep++) {
+      // Flash lights randomly every beep
+      int numToLight = random(1, NUM_ALL_LEDS + 1);
+      for (int k = 0; k < numToLight; k++) {
+        digitalWrite(ALL_LEDS[random(0, NUM_ALL_LEDS)], HIGH);
+      }
       tone(PIN_PIEZO, (int)freq, soundMs);
       delay(beepMs); // full slot - the silence after soundMs is what makes it staccato
+      clearAllLeds();
     }
   }
   noTone(PIN_PIEZO);
+  // Delay a little before another prompt appears for disambiguation
+  interludeActive = true;
+  interludeEndTime = millis() + 1000;
+
 }
 
 void startNewRound() {
@@ -880,10 +902,9 @@ void startNewRound() {
   if (newTier > lastMusicTierPlayed) {
     playSpeedUpSting();
     lastMusicTierPlayed = newTier;
+    // The speed up sting kicks off an interlude delay which will expire and run this fn again
+    return;
   }
-  musicPatternIndex = 0;
-  musicNextNoteTime = millis();
-
   clearAllLeds();
 
   currentPrompt = (Prompt)random(0, 5);
@@ -973,18 +994,16 @@ void correctAnswer() {
   score++;
   Serial.print("Score: ");
   Serial.println(score);
-  tone(PIN_PIEZO, 1400, 100); // confirmation chime
-
+  tone(PIN_PIEZO, 1397, 50); // F6
+  delay(50);
+  tone(PIN_PIEZO, 1865, 70); // Bb6
+  delay(70);
   waitingForInput = false;
   clearAllLeds();
 
-  // Start the "jam" interlude: music keeps playing for one full bar
-  // (High-Low-Low-Low) with everything dark, before the next prompt fires.
-  computeMusicTempo();
-  musicPatternIndex = 0;
-  musicNextNoteTime = millis() + 150; // let the confirmation chime finish first
+  // Pause gameplay for a bit before resuming round
   interludeActive = true;
-  interludeEndTime = millis() + (musicNoteIntervalMs * 4) + 150; // one full bar
+  interludeEndTime = millis() + (musicNoteIntervalMs * 4) + 250; // one full bar
 }
 
 void failRound(const char* reason) {
@@ -1050,7 +1069,7 @@ void playFailureSequence() {
     tone(PIN_PIEZO, (int)freq, playMs);
 
     // sparkly flicker: clear all, then randomly light a handful
-    for (int j = 0; j < NUM_ALL_LEDS; j++) digitalWrite(ALL_LEDS[j], LOW);
+    clearAllLeds();
     int numToLight = random(1, NUM_ALL_LEDS + 1);
     for (int k = 0; k < numToLight; k++) {
       digitalWrite(ALL_LEDS[random(0, NUM_ALL_LEDS)], HIGH);
@@ -1058,8 +1077,7 @@ void playFailureSequence() {
 
     delay(stepMs);
   }
-
-  for (int j = 0; j < NUM_ALL_LEDS; j++) digitalWrite(ALL_LEDS[j], LOW);
+  clearAllLeds();
   noTone(PIN_PIEZO);
 }
 
@@ -1137,6 +1155,7 @@ void playSandstorm() {
       if (random(2) == 1) digitalWrite(PIN_LED_LEFTEYE, HIGH);
       if (random(2) == 1) digitalWrite(PIN_LED_RIGHTEYE, HIGH);
       if (random(2) == 1) digitalWrite(PIN_LED_FOREHEAD, HIGH);
+      if (random(2) == 1) digitalWrite(PIN_LED_SAO, HIGH);
 
     } else {
       // Map pitch to the 5 small LEDs for the longer 8th notes
@@ -1149,6 +1168,7 @@ void playSandstorm() {
         digitalWrite(PIN_LED_LEFTEYE, HIGH);
         digitalWrite(PIN_LED_RIGHTEYE, HIGH);
         digitalWrite(PIN_LED_FOREHEAD, HIGH);
+        digitalWrite(PIN_LED_SAO, HIGH);
       }
     }
 
@@ -1624,8 +1644,7 @@ void popBalloon() {
   while (millis() - start < RING_MS) {
     int freq = toggle ? NOTE_HIGH : NOTE_LOW;
     tone(PIN_PIEZO, freq, RING_NOTE_MS);
-
-    for (int j = 0; j < NUM_ALL_LEDS; j++) digitalWrite(ALL_LEDS[j], LOW);
+    clearAllLeds();
     int numToLight = random(2, NUM_ALL_LEDS + 1);
     for (int k = 0; k < numToLight; k++) digitalWrite(ALL_LEDS[random(0, NUM_ALL_LEDS)], HIGH);
 
@@ -1634,7 +1653,7 @@ void popBalloon() {
   }
 
   noTone(PIN_PIEZO);
-  for (int j = 0; j < NUM_ALL_LEDS; j++) digitalWrite(ALL_LEDS[j], LOW);
+  clearAllLeds();
 }
 
 // ---------------- Slot 4: RoboTheremin ----------------
@@ -2030,12 +2049,13 @@ void allBankOff() {
   for (int i = 0; i < 5; i++) digitalWrite(PIN_BANK[i], LOW);
 }
 
-// Clears the 3 face LEDs (forehead + both eyes) - the other half of "clear
+// Clears the 3 face LEDs (forehead + both eyes) and SAO's - the other half of "clear
 // everything" alongside allBankOff(), which only handles the teeth.
 void clearFaceLeds() {
   digitalWrite(PIN_LED_FOREHEAD, LOW);
   digitalWrite(PIN_LED_LEFTEYE, LOW);
   digitalWrite(PIN_LED_RIGHTEYE, LOW);
+  digitalWrite(PIN_LED_SAO, LOW);
 }
 
 // The very common "clear every LED on the badge" combo.
